@@ -50,6 +50,12 @@ threadpool< T >::threadpool( int thread_number, int max_requests ):m_thread_numb
             delete[] m_threads;
             throw std::exception();
         }
+        /*
+        detachstate 线程的脱离状态。它有 PTHREAD_CREATE_JOINABLE 和 PTHREAD_CREATE_DETACH 两个可选值。
+        前者指定线程是可以被回收的，后者使调用线程脱离与进程中其他线程的同步，脱离了与其他线程同步的线程称为“脱离线程”。
+        脱离线程在退出时将自行释放其占用的系统资源。线程创建时该属性的默认值时 PTHREAD_CREATE_JOINABLE。
+        此外，也可以使用 pthread_detach 函数直接将线程设置为脱离线程
+        */
         if( pthread_detach( m_threads[i] ) ){
             delete[] m_threads;
             throw std::exception();

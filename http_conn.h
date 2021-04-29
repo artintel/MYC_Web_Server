@@ -20,7 +20,7 @@
 #include <errno.h>
 #include <sys/uio.h>
 #include "Timer_Linklist.h"
-constexpr auto TIMESLOT = 5;
+constexpr auto TIMESLOT = 60;
 static sort_timer_lst timer_lst;
 class http_conn{
 public:
