@@ -114,7 +114,7 @@ int main( int argc, char* argv[] ){
         会直接返回值
      */
 
-    struct linger tmp = { 1, 0 }; // 第二种
+    struct linger tmp = { 1, -1 }; // 第一种
     // int setsockopt( int sockfd, int level, int option_name, const void* option_value, 
     //                     socklen_t option_len );
     // SO_LINGER	若有数据待发送，则延迟关闭
