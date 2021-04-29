@@ -1,4 +1,5 @@
 #include "http_conn.h"
+#include "Timer_Linklist.h"
 /* 定义 HTTP 相应的一些状态信息 */
 const char* ok_200_title = "OK";
 const char* error_400_title = "Bad Request";
@@ -19,7 +20,7 @@ int setnonblocking( int fd ){
     return old_option;
 }
 
-void addfd( int epollfd, int fd, bool one_shot ){
+void addfd( int epollfd, int fd, bool one_shot = false ){
     // 申请事件节点
     epoll_event event;
     event.data.fd = fd;
@@ -53,10 +54,19 @@ void modfd( int epollfd, int fd, int ev ){
     epoll_ctl( epollfd, EPOLL_CTL_MOD, fd, &event );
 }
 
+// timer
+// void cb_func(http_conn* client){
+// 	// epoll_ctl( m_epollfd, EPOLL_CTL_DEL, user_data->m_sockfd, 0 );
+// 	// assert( user_data );
+//     // removefd(m_epollfd, m_sockfd);
+//     client->close_conn();
+// }
+
 int http_conn::m_user_count = 0;
 int http_conn::m_epollfd = -1;
 
 void http_conn::close_conn( bool real_close ){
+    printf( "close fd %d\n", m_sockfd );
     if( real_close && ( m_sockfd != -1 ) ){
         removefd( m_epollfd, m_sockfd );
         m_sockfd = -1;

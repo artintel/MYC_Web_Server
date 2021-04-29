@@ -18,9 +18,9 @@
 #define MAX_FD 65536
 #define MAX_EVENT_NUMBER 10000
 
-extern int addfd( int epollfd, int fd, bool one_shot );
+extern int addfd( int epollfd, int fd, bool one_shot = false );
 extern int removefd( int epollfd, int fd );
-
+extern int setnonblocking(int fd);
 /*
 struct sigaction
 {
@@ -41,8 +41,8 @@ struct sigaction
     void (*sa_restorer) (void);
 };
 */
-
-void addsig( int sig, void( handler )(int), bool restart = true ){
+void sig_handler(int);
+void addsig( int sig, void( handler )(int) = sig_handler, bool restart = true ){
     struct sigaction sa;
     memset( &sa, '\0', sizeof( sa ) );
     sa.sa_handler = handler; // SIG_IGN
@@ -60,6 +60,30 @@ void show_error( int connfd, const char* info ){
     send( connfd, info, strlen( info ), 0 );
     close( connfd );
 }
+
+// timer
+// extern constexpr auto TIMESLOT = 5;
+static int pipefd[2];
+
+void sig_handler(int sig){
+    int save_errno = errno;
+    int msg = sig;
+    send( pipefd[1], (char*)&msg, 1, 0);
+    errno = save_errno;
+}
+
+void timer_handler(){
+    timer_lst.tick();
+    alarm( TIMESLOT );
+}
+
+void cb_func(http_conn* client){
+	// epoll_ctl( m_epollfd, EPOLL_CTL_DEL, user_data->m_sockfd, 0 );
+	// assert( user_data );
+    // removefd(m_epollfd, m_sockfd);
+    client->close_conn();
+}
+
 
 int main( int argc, char* argv[] ){
     if( argc <= 2 ){
@@ -156,7 +180,19 @@ int main( int argc, char* argv[] ){
     // static int m_epollfd; 类内静态成员的使用方式和静态必须在类外初始化
     http_conn::m_epollfd = epollfd;
 
-    while( true ){
+    // timer
+    ret = socketpair( PF_UNIX, SOCK_STREAM, 0, pipefd );
+    assert( ret != -1 );
+    setnonblocking( pipefd[1] );
+
+    addfd( epollfd, pipefd[0] );
+    addsig( SIGALRM );
+    addsig( SIGTERM );
+    bool stop_server = false;
+    bool timeout = false;
+    alarm( TIMESLOT );
+
+    while( !stop_server ){
         // int epoll_wait( int epfd, struct epoll_event* events, int maxevents, int timeout );
         // wait 函数如果检测到事件，就酱所有就绪的事件从内核事件表(epfd参数指定)中复制到它的第二个参数
         // events 指向的数组中。这个而数组只用于输出 epoll_wait 检测到的就绪事件。
@@ -183,7 +219,36 @@ int main( int argc, char* argv[] ){
                     continue;
                 }
                 /* 初始化客户链接 */
+                util_timer* timer = new util_timer;
+                timer->user_data = &users[connfd];
+                timer->cb_func = cb_func;
+                time_t cur = time(NULL);
+                timer->expire = cur + 3 * TIMESLOT;
+                users[connfd].m_timer = timer;
+                timer_lst.add_timer(timer);
                 users[connfd].init( connfd, client_address );
+            }
+            else if( ( sockfd == pipefd[0] ) && ( events[i].events & EPOLLIN ) ){
+                int sig;
+                char signals[1024];
+                ret = recv( pipefd[0], signals, sizeof( signals ), 0);
+                if ( ret == -1 ) continue;
+                else if ( ret == 0 ) continue;
+                else{
+                    for( int i = 0; i < ret; ++i ){
+                        switch( signals[i] ){
+                        case SIGALRM:
+                        {
+                            timeout = true;
+                            break;
+                        }
+                        case SIGTERM:
+                        {
+                            stop_server = true;
+                        }
+                        }
+                    }
+                }
             }
             else if( events[i].events & ( EPOLLRDHUP | EPOLLHUP | EPOLLERR ) ){
                 /* 如果有异常，直接关闭客户链接 */
@@ -191,26 +256,54 @@ int main( int argc, char* argv[] ){
             }
             else if( events[i].events & EPOLLIN ){
                 /* 根据读的结果，决定是将任务添加到线程池，还是关闭连接 */
+                util_timer* timer = users[sockfd].m_timer;
                 if( users[sockfd].read() ){
                     // 这里报错
                     pool->append( users + sockfd );
+                    if( timer ){
+                        time_t cur = time(NULL);
+                        timer->expire = cur + 3 * TIMESLOT;
+                        printf( "adjust timer read\n" );
+                        timer_lst.add_timer( timer );
+                    }
                 }
                 else{
                     users[sockfd].close_conn();
+                    if( timer ){
+                        timer_lst.del_timer(timer);
+                    }
                 }
             }
             else if( events[i].events & EPOLLOUT ){
                 /* 根据写的结果，决定是否关闭连接 */
+                util_timer* timer = users[sockfd].m_timer;
                 if( !users[sockfd].write() ){
                     users[sockfd].close_conn();
+                    if( timer ){
+                       timer_lst.del_timer( timer );
+                    }
+                }
+                else{
+                    if( timer ){
+                        time_t cur = time(NULL);
+                        timer->expire = cur + 3 * TIMESLOT;
+                        printf( "adjust timer write\n" );
+                        timer_lst.add_timer( timer );
+                    }
                 }
             }
             else
             {}
+        }
+        if( timeout ){
+            timer_handler();
+            timeout = false;
         }   
     }
     close( epollfd );
     close( listenfd );
+    close( pipefd[1] );
+    close( pipefd[0] );
     delete[] users;
     delete pool;
     return 0;

@@ -19,7 +19,9 @@
 #include <stdarg.h>
 #include <errno.h>
 #include <sys/uio.h>
-
+#include "Timer_Linklist.h"
+constexpr auto TIMESLOT = 5;
+static sort_timer_lst timer_lst;
 class http_conn{
 public:
 /* 文件名的最大长度 */
@@ -59,6 +61,7 @@ private:
     /* 填充 HTTP 应答 */
     bool process_write( HTTP_CODE ret );
 
+    
     /* 下面这一组函数被 process_read 调用以分析 HTTP 请求 */
     HTTP_CODE parse_request_line( char* text );
     HTTP_CODE parse_headers( char* text );
@@ -81,9 +84,10 @@ public:
     static int m_epollfd;
     /* 统计用户数量 */
     static int m_user_count;
+    int m_sockfd;
+    util_timer* m_timer;
 private:
     /* 该 HTTP 连接的 socket 和对方的 socket 地址 */
-    int m_sockfd;
     sockaddr_in m_address;
     /* 读缓冲区 */
     char m_read_buf[ READ_BUFFER_SIZE ];
