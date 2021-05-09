@@ -19,6 +19,10 @@
 #include <stdarg.h>
 #include <errno.h>
 #include <sys/uio.h>
+#include <string.h>
+#include <map>
+#include "locker.h"
+#include "sql_pool.h"
 #include "Timer_Linklist.h"
 constexpr auto TIMESLOT = 60;
 static sort_timer_lst timer_lst;
@@ -44,7 +48,7 @@ public:
     ~http_conn(){}
 public:
     /* 初始化新接收的连接 */
-    void init( int sockfd, const sockaddr_in& addr );
+    void init( int sockfd, const sockaddr_in& addr, char* root_file, string username, string passwd, string sqlname );
     /* 关闭连接 */
     void close_conn( bool real_close = true );
     /* 处理客户请求 */
@@ -53,6 +57,7 @@ public:
     bool read();
     /* 非阻塞写操作 */
     bool write();
+    // bool read_once();
 private:
     /* 初始化连接 */
     void init();
@@ -80,6 +85,12 @@ private:
     bool add_content_length( int content_length );
     bool add_blank_line();
 public:
+    void initmysql_result(connection_pool* connPool);
+    int timer_flag;
+    int improv;
+    MYSQL* mysql;
+    // 区分读写
+    int m_state;
     /* 所有 socket 上的事件都被注册到同一个 epoll 内核事件表中，所以将 epoll 文件描述符设置为静态的 */
     static int m_epollfd;
     /* 统计用户数量 */
@@ -150,6 +161,15 @@ private:
     // iovec 结构体封装了一块内存的地址起始位置和长度
     struct iovec m_iv[2];
     int m_iv_count;
+
+    int cgi;        // 是否启用 POST 
+    char* m_string; // 存储请求头数据
+    int bytes_to_send;
+    int bytes_have_send;
+    map<string, string> m_users;
+    char sql_user[100];
+    char sql_passwd[100];
+    char sql_name[100];
 };
 
 

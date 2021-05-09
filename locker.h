@@ -11,8 +11,13 @@ public:
     /* 创建并初始化信号量 */
     sem(){
         // int sem_init( sem_t* sem, int pshared, unsigned int value );
-        if( sem_init( &m_sem, 0, 0) != 0 ){
+        if( sem_init( &m_sem, 0, 0 ) != 0 ){
             /* 构造函数没有返回值，可以通过抛出异常来报告错误 */
+            throw std::exception();
+        }
+    }
+    sem(int number){
+        if( sem_init( &m_sem, 0, number ) != 0 ){
             throw std::exception();
         }
     }

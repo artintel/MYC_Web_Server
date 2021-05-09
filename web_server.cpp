@@ -93,6 +93,16 @@ int main( int argc, char* argv[] ){
     const char* ip = argv[1];       // 保存 webserver 的 ip 地址
     int port = atoi( argv[2] );     // 保存 webserver 的 端口
 
+    // 资源路径
+    char server_path[200];
+    // getcwd()会将当前工作目录的绝对路径复制到参数buffer所指的内存空间中,
+    // 参数maxlen为buffer的空间大小
+    getcwd(server_path, 200);
+    char root[11] = "/root_file";
+    char* root_file = (char*)malloc(strlen(server_path) + strlen(root) + 1);
+    strcpy(root_file, server_path);
+    strcat(root_file, root);
+
     /* 忽略 SIGPIPE 信号
         SIG_IGN 表示忽略目标的信号，这是一个接收函数
         #include <bits/signum.h>
@@ -104,17 +114,33 @@ int main( int argc, char* argv[] ){
                                 // 信号的默认行为是结束进程。引起 `SIGPIPE 信号的写操作将设置 error 
                                 // 为 EPIPE
 
-    /* 创建线程池 */
+    /* 预先为每个可能的客户连接分配一个 http_conn 对象 */
+    http_conn* users = new http_conn[ MAX_FD ];
+    assert( users );
+
+    /* 启动数据库池 */
+    connection_pool* connPool;
+    string user = "root";    // 登陆数据库用户名
+    string passWord = "123456";    // 登陆数据库密码
+    string databaseName = "web";    // 使用数据库名
+    int sql_num = 8;
+
+    // 初始化数据库连接池
+    connPool = connection_pool::GetInstance();
+    connPool->init("localhost", user, passWord, databaseName, port, sql_num);
+
+    // 初始化数据库读取表
+    users->initmysql_result(connPool);
+
+    /* 启动线程池 */
     threadpool< http_conn >* pool = NULL;
     try{
-        pool = new threadpool< http_conn >;
+        pool = new threadpool< http_conn >(connPool);
     }
     catch( ... ){
         return 1;
     }
-    /* 预先为每个可能的客户连接分配一个 http_conn 对象 */
-    http_conn* users = new http_conn[ MAX_FD ];
-    assert( users );
+
     int user_count = 0;
 
     int listenfd = socket( PF_INET, SOCK_STREAM, 0 ); // 创建监听 socket 套接字
@@ -138,7 +164,8 @@ int main( int argc, char* argv[] ){
         会直接返回值
      */
 
-    struct linger tmp = { 1, -1 }; // 第一种
+    // struct linger tmp = { 1, 1 }; // 优雅退出
+    struct linger tmp = { 0, 1 }; // 优雅退出
     // int setsockopt( int sockfd, int level, int option_name, const void* option_value, 
     //                     socklen_t option_len );
     // SO_LINGER	若有数据待发送，则延迟关闭
@@ -157,20 +184,6 @@ int main( int argc, char* argv[] ){
 
     ret = listen( listenfd, 5 );
     assert( ret >= 0 );
-
-    // typedef union epoll_data
-    // {
-    // void *ptr;
-    // int fd;
-    // uint32_t u32;
-    // uint64_t u64;
-    // } epoll_data_t;
-
-    // struct epoll_event
-    // {
-    // uint32_t events;	/* Epoll events */
-    // epoll_data_t data;	/* User data variable */
-    // } __EPOLL_PACKED;
 
     epoll_event events[ MAX_EVENT_NUMBER ];
     int epollfd = epoll_create( 5 );
@@ -205,9 +218,6 @@ int main( int argc, char* argv[] ){
             int sockfd = events[i].data.fd;
             if( sockfd == listenfd ){
                 struct sockaddr_in client_address;
-                // typedef __socklen_t socklen_t;
-                // __STD_TYPE __U32_TYPE __socklen_t;
-                // #define __U32_TYPE		unsigned int
                 socklen_t client_addrlength = sizeof( client_address );
                 int connfd = accept( listenfd, ( struct sockaddr* )&client_address, &client_addrlength  );
                 if( connfd < 0 ){
@@ -226,7 +236,7 @@ int main( int argc, char* argv[] ){
                 timer->expire = cur + 3 * TIMESLOT;
                 users[connfd].m_timer = timer;
                 timer_lst.add_timer(timer);
-                users[connfd].init( connfd, client_address );
+                users[connfd].init( connfd, client_address, root_file, user, passWord, databaseName);
             }
             else if( ( sockfd == pipefd[0] ) && ( events[i].events & EPOLLIN ) ){
                 int sig;
@@ -257,38 +267,51 @@ int main( int argc, char* argv[] ){
             else if( events[i].events & EPOLLIN ){
                 /* 根据读的结果，决定是将任务添加到线程池，还是关闭连接 */
                 util_timer* timer = users[sockfd].m_timer;
-                if( users[sockfd].read() ){
-                    // 这里报错
-                    pool->append( users + sockfd );
-                    if( timer ){
-                        time_t cur = time(NULL);
-                        timer->expire = cur + 3 * TIMESLOT;
-                        printf( "adjust timer read\n" );
-                        timer_lst.add_timer( timer );
-                    }
+                if( timer ){
+                    time_t cur = time(NULL);
+                    timer->expire = cur + 3 * TIMESLOT;
+                    // printf( "adjust timer read\n" );
+                    timer_lst.adjust_timer( timer );
                 }
-                else{
-                    users[sockfd].close_conn();
-                    if( timer ){
-                        timer_lst.del_timer(timer);
+                // m_state = 0 | 1 来区分是读还是写的工作
+                pool->append( users + sockfd, 0 );
+                while(true){
+                    // 数据可读触发, 线程回调函数开始读
+                    // read 正确读取数据并且后续的处理都正确
+                    // improv = 1; timer_flag = 0;
+                    // read 读取报错
+                    // improv = 1; timer_flag = 1;
+                    if( users[sockfd].improv == 1 ){
+                        // 数据可读触发，但是读到了错误信息或者说报错 timer_flag = 1
+                        if( users[sockfd].timer_flag == 1 ){
+                            users[sockfd].close_conn();
+                            timer_lst.del_timer(timer);
+                            users[sockfd].timer_flag = 0;
+                        }
+                        users[sockfd].improv = 0;
+                        break;
                     }
                 }
             }
             else if( events[i].events & EPOLLOUT ){
                 /* 根据写的结果，决定是否关闭连接 */
                 util_timer* timer = users[sockfd].m_timer;
-                if( !users[sockfd].write() ){
-                    users[sockfd].close_conn();
-                    if( timer ){
-                       timer_lst.del_timer( timer );
-                    }
+                if( timer ){
+                    time_t cur = time(NULL);
+                    timer->expire = cur + 3 * TIMESLOT;
+                    // printf( "adjust timer write\n" );
+                    timer_lst.adjust_timer( timer );   
                 }
-                else{
-                    if( timer ){
-                        time_t cur = time(NULL);
-                        timer->expire = cur + 3 * TIMESLOT;
-                        printf( "adjust timer write\n" );
-                        timer_lst.add_timer( timer );
+                pool->append( users + sockfd, 1 );
+                while(true){
+                    if( users[sockfd].improv == 1 ){
+                        if( users[sockfd].timer_flag == 1 ){
+                            users[sockfd].close_conn();
+                            timer_lst.del_timer(timer);
+                            users[sockfd].timer_flag = 0;
+                        }
+                        users[sockfd].improv = 0;
+                        break;
                     }
                 }
             }
