@@ -18,6 +18,41 @@
     > lock
     > post or wait
     > unlock
+  使用 RAII 机制实现数据库连接的释放操作
+  ```cpp
+  class connectionRAII{
+  public:
+    connectionRAII(MYSQL **con, connection_pool *connPool);
+    ~connectionRAII();
+    
+  private:
+    MYSQL *conRAII;
+    connection_pool *poolRAII;
+  };
+  ```
+  在用户要使用数据库时
+  ```cpp
+  connectionRAII::connectionRAII(MYSQL **SQL, connection_pool *connPool){
+    *SQL = connPool->GetConnection();
+    
+    conRAII = *SQL;
+    poolRAII = connPool; // 通过这一句，connectionRAII::poolRAII 成员保存数据库连接池
+    //  当connectionRAII 析构的时候，释放数据库连接
+  }
+  connectionRAII::~connectionRAII(){
+	  poolRAII->ReleaseConnection(conRAII); // 当前使用的数据库连接放回数据库连接池
+  }
+  ```
+  项目中 RAII 机制体现
+  ```cpp
+  // threadpool.h --> void threadpool< T >::run()
+  if( request->read() ){
+    request->improv = 1;
+    connectionRAII mysqlcon(&request->mysql, m_connPool);
+    request->process();
+  }
+  // mysqlcon 局部成员离开 if 作用域之后，自动调用 connectionRAII 析构函数，数据库连接释放回连接池
+  ```
 
   利用 POST 方法来进行用户创建或者登陆过程中向服务器推送信息
 
