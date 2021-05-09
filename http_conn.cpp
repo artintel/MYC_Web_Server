@@ -100,7 +100,7 @@ int http_conn::m_user_count = 0;
 int http_conn::m_epollfd = -1;
 
 void http_conn::close_conn( bool real_close ){
-    printf( " sha close fd %d\n", m_sockfd );
+    printf( "close fd %d\n", m_sockfd );
     if( real_close && ( m_sockfd != -1 ) ){
         removefd( m_epollfd, m_sockfd );
         m_sockfd = -1;
@@ -435,7 +435,7 @@ http_conn::HTTP_CODE http_conn::do_request(){
     }
 
     if( *( p + 1 ) == '0' ){
-        printf("register\n");
+        // printf("register\n");
         char* m_url_real = (char*)malloc(sizeof(char) * 200);
         strcpy(m_url_real, "/register.html");
         strncpy(m_real_file + len, m_url_real, strlen(m_url_real));

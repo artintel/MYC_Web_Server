@@ -1,3 +1,8 @@
+> 编译： 
+
+> `g++ -o web_server web_server.cpp http_conn.cpp sql_pool.cpp -lpthread -I/usr/include/mysql -L/usr/lib/mysql/ -L/usr/bin/mysql -lmysqlclient`
+
+> ./web_server 192.168.249.133 8080
 - 目前实现了
   - 系统启动时静态生成 8 个线程的线程池
   - epoll 管理 I/O 事件
@@ -173,6 +178,6 @@
   - [x] 数据库连接池--保存注册登陆信息
   - [ ] 整理代码文件 - 应该会需要的用到 CMake 的知识了。后续学习
   - [ ] 整理 REAMDME，更美观
-  - [ ] 尝试和数据库联结
-  - [ ] 服务器资源或者数据库资源用网页的方式输出在客户端网页前端上
+  - [x] 尝试和数据库联结
+  - [x] 服务器资源或者数据库资源用网页的方式输出在客户端网页前端上
   - [ ] ...还没想好
