@@ -2,6 +2,8 @@
 
 > `g++ -o web_server web_server.cpp http_conn.cpp sql_pool.cpp -lpthread -I/usr/include/mysql -L/usr/lib/mysql/ -L/usr/bin/mysql -lmysqlclient`
 
+<a href="https://sm.ms/image/y6b97LAUYZQEutv" target="_blank"><img src="https://i.loli.net/2021/05/09/y6b97LAUYZQEutv.gif" ></a>
+
 > ./web_server 192.168.249.133 8080
 - 目前实现了
   - 系统启动时静态生成 8 个线程的线程池
