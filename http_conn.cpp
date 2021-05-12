@@ -484,6 +484,7 @@ http_conn::HTTP_CODE http_conn::do_request(){
         // printf("m_real_file:%s\t\n", m_real_file);
     }
     
+    // int stat( const char* restrict pathname, struct stat* restrict buf )
     if( stat( m_real_file, &m_file_stat ) < 0 ){
         return NO_RESOURCE;
     }
