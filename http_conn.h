@@ -24,7 +24,7 @@
 #include "locker.h"
 #include "sql_pool.h"
 #include "Timer_Linklist.h"
-constexpr auto TIMESLOT = 60;
+constexpr auto TIMESLOT = 10;
 static sort_timer_lst timer_lst;
 class http_conn{
 public:

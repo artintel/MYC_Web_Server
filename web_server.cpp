@@ -14,6 +14,7 @@
 #include "locker.h"
 #include "threadpool.h"
 #include "http_conn.h"
+#include "log.h"
 
 #define MAX_FD 65536
 #define MAX_EVENT_NUMBER 10000
@@ -52,7 +53,7 @@ void addsig( int sig, void( handler )(int) = sig_handler, bool restart = true ){
     // sa_mask 成员设置进程的信号编码，以确定哪些信号不能发送给本线程
     sigfillset( &sa.sa_mask ); // 在信号集中设置所有信号
     // int sigaction( int sig, const struct sigaction* act, struct sigaction* oact );
-    assert( sigaction( sig, &sa, NULL ) != -1 ); // siaction 信号处理函数接口
+    assert( sigaction( sig, &sa, NULL ) != -1 ); // sigaction 信号处理函数接口
 }
 
 void show_error( int connfd, const char* info ){
@@ -102,6 +103,17 @@ int main( int argc, char* argv[] ){
     char* root_file = (char*)malloc(strlen(server_path) + strlen(root) + 1);
     strcpy(root_file, server_path);
     strcat(root_file, root);
+
+    // 开启异步写日志 
+    int LOGWrite = 1;
+    // 默认日志不关闭
+    int m_close_log = 0;
+
+    //初始化日志
+    if (1 == LOGWrite)
+        Log::get_instance()->init("./ServerLog/Log", m_close_log, 2000, 800000, 800);
+    else
+        Log::get_instance()->init("./ServerLog/Log", m_close_log, 2000, 800000, 0);
 
     /* 忽略 SIGPIPE 信号
         SIG_IGN 表示忽略目标的信号，这是一个接收函数
@@ -211,7 +223,7 @@ int main( int argc, char* argv[] ){
         // events 指向的数组中。这个而数组只用于输出 epoll_wait 检测到的就绪事件。
         int number = epoll_wait( epollfd, events, MAX_EVENT_NUMBER, -1 );
         if( ( number < 0 ) && ( errno != EINTR ) ){
-            printf( "epollfailure\n" );
+            LOG_ERROR("%s", "epoll failure");
             break;
         }
         for( int i = 0; i < number; i++ ){
@@ -221,11 +233,12 @@ int main( int argc, char* argv[] ){
                 socklen_t client_addrlength = sizeof( client_address );
                 int connfd = accept( listenfd, ( struct sockaddr* )&client_address, &client_addrlength  );
                 if( connfd < 0 ){
-                    printf( "errno is: %d\n", errno );
+                    LOG_ERROR("%s:errno is:%d", "accept error", errno);
                     continue;
                 }
                 if( http_conn::m_user_count >= MAX_FD ){
                     show_error( connfd, "Internal server busy" );
+                    LOG_ERROR("%s", "Internal server busy");
                     continue;
                 }
                 /* 初始化客户链接 */
@@ -242,8 +255,14 @@ int main( int argc, char* argv[] ){
                 int sig;
                 char signals[1024];
                 ret = recv( pipefd[0], signals, sizeof( signals ), 0);
-                if ( ret == -1 ) continue;
-                else if ( ret == 0 ) continue;
+                if ( ret == -1 ) {
+                    LOG_ERROR("%s", "signal failure");
+                    continue;
+                }
+                else if ( ret == 0 ) {
+                    LOG_ERROR("%s", "signal failure");
+                    continue;
+                }
                 else{
                     for( int i = 0; i < ret; ++i ){
                         switch( signals[i] ){
@@ -272,6 +291,7 @@ int main( int argc, char* argv[] ){
                     timer->expire = cur + 3 * TIMESLOT;
                     // printf( "adjust timer read\n" );
                     timer_lst.adjust_timer( timer );
+                    LOG_INFO("%s", "adjust timer once");
                 }
                 // m_state = 0 | 1 来区分是读还是写的工作
                 pool->append( users + sockfd, 0 );
@@ -287,6 +307,8 @@ int main( int argc, char* argv[] ){
                             users[sockfd].close_conn();
                             timer_lst.del_timer(timer);
                             users[sockfd].timer_flag = 0;
+                            printf("%d-%d\n",sockfd, users[sockfd].m_sockfd);
+                            LOG_INFO("close fd %d", users[sockfd].m_sockfd);
                         }
                         users[sockfd].improv = 0;
                         break;
@@ -301,6 +323,7 @@ int main( int argc, char* argv[] ){
                     timer->expire = cur + 3 * TIMESLOT;
                     // printf( "adjust timer write\n" );
                     timer_lst.adjust_timer( timer );   
+                    LOG_INFO("%s", "adjust timer once");
                 }
                 pool->append( users + sockfd, 1 );
                 while(true){
@@ -309,6 +332,7 @@ int main( int argc, char* argv[] ){
                             users[sockfd].close_conn();
                             timer_lst.del_timer(timer);
                             users[sockfd].timer_flag = 0;
+                            LOG_INFO("close fd %d", users[sockfd].m_sockfd);
                         }
                         users[sockfd].improv = 0;
                         break;
@@ -320,6 +344,7 @@ int main( int argc, char* argv[] ){
         }
         if( timeout ){
             timer_handler();
+            LOG_INFO("%s", "timer tick");
             timeout = false;
         }   
     }

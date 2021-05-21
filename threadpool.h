@@ -20,6 +20,7 @@ public:
     bool append( T* request, int state );
 private:
     /* 工作线程运行的函数，它不断从工作队列中取出任务并执行之 */
+    /* static 多个线程池共用 worker */
     static void* worker( void* arg );
     void run();
 
