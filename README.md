@@ -1,6 +1,6 @@
 > 编译： 
 
-> `g++ -o web_server web_server.cpp http_conn.cpp sql_pool.cpp -lpthread -I/usr/include/mysql -L/usr/lib/mysql/ -L/usr/bin/mysql -lmysqlclient`
+> `g++ -o web_server web_server.cpp http_conn.cpp log.cpp sql_pool.cpp -lpthread -I/usr/include/mysql -L/usr/lib/mysql/ -L/usr/bin/mysql -lmysqlclient`
 
 <a href="https://sm.ms/image/R9lBr7tkjqmV38z" target="_blank"><img src="https://i.loli.net/2021/05/09/R9lBr7tkjqmV38z.gif" ></a>
 

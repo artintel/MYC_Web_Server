@@ -535,13 +535,9 @@ bool http_conn::write(){
         }
         // to_send 需要发送的
         // have_send 已经发送的
-        // printf("bytes_to_send_before:%d\n", bytes_to_send);
-        // printf("bytes_have_send_after:%d\n", bytes_have_send);
+
         bytes_to_send -= temp;
         bytes_have_send += temp;
-        // printf("bytes_to_send:%d\n", bytes_to_send);
-        // printf("bytes_have_send:%d\n", bytes_have_send);
-        // printf("--------------\n");
 
         if( bytes_have_send >= m_iv[0].iov_len){
             m_iv[0].iov_len = 0;
